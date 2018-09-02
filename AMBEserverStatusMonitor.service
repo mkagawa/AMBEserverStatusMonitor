@@ -8,6 +8,10 @@
 
 #   [Service]
 #   Environment=OPTIONS=-DMY_DEFINE
+#   -- How to enable (mkagawa)
+#   copy this file (AMBEserverStatusMonitor.service) into /lib/systemd/system/
+#   then # systemctl daemon-reload
+#        # systemctl enable AMBEserverStatusMonitor 
 
 [Unit]
 Description=AMBE server status monitor
