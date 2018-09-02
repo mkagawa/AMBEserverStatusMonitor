@@ -84,11 +84,13 @@ class Blinker(Thread):
       '8':'___..',
       '9':'____.',
     }
+    self.runCmd("echo none >/sys/class/leds/led0/trigger");
     with warnings.catch_warnings():
       warnings.simplefilter("ignore")
       self.activity = LED(47, active_high=False)
     self.lan = {}
-    self.runCmd("echo none >/sys/class/leds/led0/trigger"); 
+    self.wlan = None
+    self.eth = None
 
     #parse ip address from dhcpcd.conf
     #these are expected static ip addresses
@@ -127,7 +129,7 @@ class Blinker(Thread):
             self.lan[intf] = {}
             if intf.startswith("wlan"):
               self.wlan = intf
-            elif intf.starts("eth"):
+            elif intf.startswith("eth"):
               self.eth = intf
           if len(line) > 7 and line[0] != '#':
             zz = re2.search(line)
@@ -152,7 +154,8 @@ class Blinker(Thread):
     self.curDev = None
     self.currentWifi = None
     self.terminate = Event()
-    self.currentStatus = 'OK'
+    self.changeStat = Event()
+    self.setStatus('OK')
     self.checkerTimer = None
 
   def startTimer(self):
@@ -178,6 +181,7 @@ class Blinker(Thread):
     self.startTimer()
 
   def checkStatus(self):
+    print "start checkStatus"
     #if eth is up, then use treat it as main i/f
     self.curDev = None
     if self.lan[self.wlan]:
@@ -187,15 +191,13 @@ class Blinker(Thread):
 
     #if Wifi is not configured in dhcpcd.txt, then exit as status "N"
     if not self.curDev and not self.lan[self.wlan]:
-      self.currentStatus = 'N' # no device is up
-      return
+      return self.setStatus('N') # no device is up
 
-    if not self.currentDev:
+    if not self.curDev:
       #if LAN is not up, check wifi device status
       ret = self.iwconfig(self.wlan) #see if wifi is connected
       if not ret:
-        self.currentStatus = 'W' # wifi is configured but not connected
-        return
+        return self.setStatus('W') # wifi is configured but not connected
       print "WIFI = OK (%s:%s)" % (self.wlan,self.currentWifi)
       self.curDev = self.wlan
 
@@ -205,9 +207,7 @@ class Blinker(Thread):
     #check IP conflict
     ret = self.arp(ret[0]) #check dup ip
     if ret:
-      print "IP address conflict"
-      self.currentStatus = 'D'
-      return
+      return self.setStatus('D') # dup ip
     print "No conflict"
 
     if self.terminate.wait(0):
@@ -217,9 +217,7 @@ class Blinker(Thread):
     dns = self.lan[self.curDev]['domain_name_servers'][0]
     ret = self.route(self.curDev,gw)
     if not ret:
-      print "default G/W error"
-      self.currentStatus = 'G'
-      return
+      return self.setStatus('G') # g/w error
 
     self.gw = ret[1]
     print "Got default route, %s" % self.gw
@@ -232,11 +230,14 @@ class Blinker(Thread):
     #print ret
     ret = self.ping(self.gw) #ping g/w
     if not ret:
-      print "G/W ping failed"
-      self.currentStatus = "P"
-      return
-    self.currentStatus = "OK"
+      return self.setStatus('P') # "G/W ping failed"
+    self.setStatus("OK")
     print "All OK"
+
+  def setStatus(self,stat):
+    print "status %s set" % stat
+    self.changeStat.set()
+    self.currentStatus = stat
 
   def runCmd(self, cmd, re1 = None):
     p = Popen(cmd, stdout=PIPE, stderr=PIPE, shell=True)
@@ -299,35 +300,36 @@ class Blinker(Thread):
     return ret.groups() if ret else None
 
   def run(self):
+    print "run thread"
     self.blink()
 
   def blink(self,pchr=None):
-    if not pchr:
-      chr = self.currentStatus
-    else:
-      chr = pchr
-
-    if chr == 'OK':
-      while 1:
-        self.activity.on()
-        sleep(.2)
-        self.activity.off()
-        if self.terminate.wait(7.8):
-          break
-    else:
-      while 1:
-        for c in self.ch[chr]:
+    if pchr:
+      self.currentStatus = pchr
+    while not self.terminate.wait(0):
+      self.changeStat.clear()
+      if self.currentStatus == 'OK':
+        while not self.terminate.wait(7.8):
           self.activity.on()
-          sleep(.2 if c=='.' else .6)
-          self.activity.off()
           sleep(.2)
-        if self.terminate.wait(3):
-          break
+          self.activity.off()
+          if self.changeStat.wait(0):
+            break
+      else:
+        print "show status %s" % self.currentStatus
+        while not self.terminate.wait(3):
+          for c in self.ch[self.currentStatus]:
+            self.activity.on()
+            sleep(.2 if c=='.' else .6)
+            self.activity.off()
+            sleep(.2)
+          if self.changeStat.wait(0):
+            break
 
 if __name__ == "__main__":
   l = Blinker()
   def signal_handler(signum,frame):
-    print signum
+    print "Ctrl-C: %d" % signum
     l.end()
   signal(SIGINT, signal_handler)
   if len(sys.argv) == 2:
@@ -339,10 +341,9 @@ if __name__ == "__main__":
   else:
     l.checkStatus()
     l.start()
-    print "start"
     l.startTimer()
     print "wait for signal - must be a loop"
-    while l.terminate.wait(2):
+    while not l.terminate.wait(2):
       pass
     l.join()
     print "end of process"
