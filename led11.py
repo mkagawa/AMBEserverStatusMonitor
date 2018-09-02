@@ -188,6 +188,7 @@ class Blinker(Thread):
       ret = self.ifconfig(self.eth) #see check i/f is up
       if ret:
         self.curDev = self.eth
+        self.currentIP = ret[0]
 
     #if Wifi is not configured in dhcpcd.txt, then exit as status "N"
     if not self.curDev and not self.lan[self.wlan]:
@@ -198,14 +199,18 @@ class Blinker(Thread):
       ret = self.iwconfig(self.wlan) #see if wifi is connected
       if not ret:
         return self.setStatus('W') # wifi is configured but not connected
+      if self.currentWifi != self.expectedWifi:
+        return self.setStatus('X') # wifi is configured to unexpected ssid
+      ret = self.ifconfig(self.wlan)
       print "WIFI = OK (%s:%s)" % (self.wlan,self.currentWifi)
       self.curDev = self.wlan
+      self.currentIP = ret[0]
 
     if self.terminate.wait(0):
       return
 
     #check IP conflict
-    ret = self.arp(ret[0]) #check dup ip
+    ret = self.arp(self.currentIP) #check dup ip
     if ret:
       return self.setStatus('D') # dup ip
     print "No conflict"
@@ -272,7 +277,7 @@ class Blinker(Thread):
     ret = self.runCmd(cmd,r) 
     self.currentWifi = ret.group(1) if ret else None
     print "WIFI connected: %s" % self.currentWifi
-    return self.currentWifi is not None
+    return ret.groups() if ret else None
 
   def arp(self,dev):
     cmd = "/usr/sbin/arp -n %s" % dev
