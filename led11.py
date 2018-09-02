@@ -178,29 +178,31 @@ class Blinker(Thread):
     self.startTimer()
 
   def checkStatus(self):
+    #if eth is up, then use treat it as main i/f
+    self.curDev = None
     if self.lan[self.wlan]:
-      ret = self.iwconfig() #see if wifi is connected
+      ret = self.ifconfig(self.eth) #see check i/f is up
+      if ret:
+        self.curDev = self.eth
+
+    #if Wifi is not configured in dhcpcd.txt, then exit as status "N"
+    if not self.curDev and not self.lan[self.wlan]:
+      self.currentStatus = 'N' # no device is up
+      return
+
+    if not self.currentDev:
+      #if LAN is not up, check wifi device status
+      ret = self.iwconfig(self.wlan) #see if wifi is connected
       if not ret:
-        self.currentStatus = 'W'
+        self.currentStatus = 'W' # wifi is configured but not connected
         return
       print "WIFI = OK (%s:%s)" % (self.wlan,self.currentWifi)
       self.curDev = self.wlan
-    else:
-      print "No WIFI"
-      self.curDev = self.eth
 
     if self.terminate.wait(0):
       return
 
-    ret = self.ifconfig(self.curDev) #see check i/f is up
-    if not ret:
-      print "i/f %s is not up" % self.curDev
-      self.currentStatus = 'I'
-      return
-
-    if self.terminate.wait(0):
-      return
-
+    #check IP conflict
     ret = self.arp(ret[0]) #check dup ip
     if ret:
       print "IP address conflict"
@@ -212,7 +214,7 @@ class Blinker(Thread):
       return
 
     gw = self.lan[self.curDev]['routers'][0]
-    dns = self.lan[self.curDev]['routers'][0]
+    dns = self.lan[self.curDev]['domain_name_servers'][0]
     ret = self.route(self.curDev,gw)
     if not ret:
       print "default G/W error"
@@ -233,6 +235,7 @@ class Blinker(Thread):
       print "G/W ping failed"
       self.currentStatus = "P"
       return
+    self.currentStatus = "OK"
     print "All OK"
 
   def runCmd(self, cmd, re1 = None):
@@ -262,8 +265,8 @@ class Blinker(Thread):
     #print "failed 2 " + cmd
     return None
 
-  def iwconfig(self):
-    cmd = "/sbin/iwconfig %s | grep SSID" % self.wlan
+  def iwconfig(self, dev):
+    cmd = "/sbin/iwconfig %s | grep SSID" % dev
     r = re.compile('SSID:"(.+)"$')
     ret = self.runCmd(cmd,r) 
     self.currentWifi = ret.group(1) if ret else None
