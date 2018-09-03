@@ -327,9 +327,11 @@ class Blinker(Thread):
     for dd in self.ipr.get_links(): #filter may not work always
       attrs = parseAttrs(dd['attrs']) if 'attrs' in dd else None
       if attrs and attrs['IFLA_IFNAME'] == dev:
+        print "dev:%s,index: %s" % (dev,dd['index'])
         aa = self.ipr.get_addr(index=dd['index'])
-        attrs = parseAttrs(aa[0]['attrs']) if 'attrs' in aa[0] else None
-        return (attrs['IFA_ADDRESS'],attrs['IFA_BROADCAST']) if attrs else None
+        if aa:
+          attrs = parseAttrs(aa[0]['attrs']) if 'attrs' in aa[0] else None
+          return (attrs['IFA_ADDRESS'],attrs['IFA_BROADCAST']) if attrs else None
     return None
 
   def ping(self, ipaddr=None):
@@ -381,10 +383,10 @@ class Blinker(Thread):
           msg.pop('header', None)
 
           if event in ("RTM_NEWADDR", "RTM_DELADDR","RTM_GETADDR"):
-            print "%s - %s" % event
+            print "%s - %s" % (asctime(),event)
             checkerInvoker()
           elif event in ("RTM_NEWROUTE","RTM_DELROUTE","RTM_GETROUTE"):
-            print "%s - %s" % event
+            print "%s - %s" % (asctime(),event)
             checkerInvoker()
           elif event in ("RTM_NEWNEIGH"):
             attrs.pop('NDA_CACHEINFO', None)
