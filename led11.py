@@ -284,7 +284,7 @@ class Blinker(Thread):
     for rrr in re1:
       for line in out.split("\n"):
         rr1 = rrr.search(line.strip())
-        print line
+        #print line
         if rr1:
           return rr1
         #print ">> " + line
@@ -295,7 +295,7 @@ class Blinker(Thread):
 
   def iwconfig(self, dev):
     cmd = "/sbin/iwconfig %s | grep SSID" % dev
-    r = re.compile('SSID:"(.+)"$')
+    r = re.compile('SSID:"(.+?)"')
     ret = self.runCmd(cmd,r) 
     self.currentWifi = ret.group(1) if ret else None
     print "WIFI connected: %s" % self.currentWifi
@@ -310,7 +310,7 @@ class Blinker(Thread):
       if 'NDA_LLADDR' in attrs and attrs['NDA_LLADDR'] == '00:00:00:00:00:00':
         continue
       if attrs['NDA_DST'] == self.ipAddr:
-        print attrs['NDA_DST']
+        #print attrs['NDA_DST']
         print "detect conflict with with mac addr %s" % (attrs['NDA_LLADDR'])
         return self.setCurrentStatus('D')
     print "ip address  %s has no conflict" % self.ipAddr
@@ -323,7 +323,7 @@ class Blinker(Thread):
         #ipv4 only
         continue
       attrs = parseAttrs(n['attrs']) if 'attrs' in n else None
-      print attrs
+      #print attrs
       if 'RTA_GATEWAY' in attrs and attrs['RTA_GATEWAY'] and self.gw == attrs['RTA_GATEWAY']:
         gwmatch = True
 
