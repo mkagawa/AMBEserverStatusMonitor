@@ -324,10 +324,13 @@ class Blinker(Thread):
     return self.getCurrentStatusOK()
 
   def ifconfig(self,dev):
-    cmd = "/sbin/ifconfig %s | grep inet" % dev
-    r = re.compile('^inet\s+([\d\.]+)\s+netmask\s+([\d\.]+)\s+broadcast\s+([\d\.]+)$')
-    ret = self.runCmd(cmd,r) 
-    return ret.groups() if ret else None
+    for dd in self.ipr.get_links(): #filter may not work always
+      attrs = parseAttrs(dd['attrs']) if 'attrs' in dd else None
+      if attrs and attrs['IFLA_IFNAME'] == dev:
+        aa = self.ipr.get_addr(index=dd['index'])
+        attrs = parseAttrs(aa[0]['attrs']) if 'attrs' in aa[0] else None
+        return (attrs['IFA_ADDRESS'],attrs['IFA_BROADCAST']) if attrs else None
+    return None
 
   def ping(self, ipaddr=None):
     cmd = "/bin/ping -t1 -c3 %s" % ipaddr
