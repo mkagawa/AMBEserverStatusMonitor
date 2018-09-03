@@ -47,6 +47,8 @@ import sys
 import re
 import traceback
 
+LEDDEV="/sys/class/leds/led0/trigger"
+
 def parseAttrs(attrs):
   return dict((x, y) for x, y in attrs)
 
@@ -91,7 +93,7 @@ class Blinker(Thread):
       '8':'___..',
       '9':'____.',
     }
-    with open("/sys/class/leds/led0/trigger","w") as f:
+    with open(LEDDEV,"w") as f:
       f.write("none")
     with warnings.catch_warnings():
       warnings.simplefilter("ignore")
@@ -185,7 +187,7 @@ class Blinker(Thread):
       return
     print "Ctrl-C pressed - will exit in few seconds"
     self.activity.off()
-    with open("/sys/class/leds/led0/trigger","w") as f:
+    with open(LEDDEV,"w") as f:
       f.write("mmc0")
     self.terminate.set()
     self.ipr.close()
