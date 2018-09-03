@@ -230,8 +230,6 @@ class Blinker(Thread):
 
     if not self.ipAddr:
       print "both eth and wlan are down, status=%s" % self.currentStatus
-      if self.currentStatus is None:
-        self.setCurrentStatus('N')
       return
 
     #check IP conflict
