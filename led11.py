@@ -28,10 +28,10 @@
 __author__ = "Masa Kagawa (NW6UP)"
 __copyright__ = "Copyright 2018, Masa Kagawa"
 __license__ = "MIT"
-__version__ = "0.11"
+__version__ = "0.5"
 __maintainer__ = "Masa Kagawa"
 __email__ = "mkagawa@hotmail.com"
-__status__ = "Alpha"
+__status__ = "Beta"
 
 
 from pyroute2 import IPRoute
