@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
-#Version 0.11
+#Version 0.5
 
 # The MIT License (MIT)
 #
@@ -34,14 +34,21 @@ __email__ = "mkagawa@hotmail.com"
 __status__ = "Alpha"
 
 
+from pyroute2 import IPRoute
 from gpiozero import LED
 from time import sleep
-import warnings
-import sys
-import re
+from select import select
 from threading import Timer, Thread, Event
 from signal import signal,SIGINT,SIGHUP,SIGTERM
 from subprocess import Popen,PIPE
+from time import asctime
+import warnings
+import sys
+import re
+import traceback
+
+def parseAttrs(attrs):
+  return dict((x, y) for x, y in attrs)
 
 class Blinker(Thread):
   def __init__(self):
@@ -84,13 +91,19 @@ class Blinker(Thread):
       '8':'___..',
       '9':'____.',
     }
-    self.runCmd("echo none >/sys/class/leds/led0/trigger");
+    with open("/sys/class/leds/led0/trigger","w") as f:
+      f.write("none")
     with warnings.catch_warnings():
       warnings.simplefilter("ignore")
       self.activity = LED(47, active_high=False)
-    self.lan = {}
-    self.wlan = None
+      self.activity.off()
+
+    self.lanConfig = {}
+    self.ipr = IPRoute()
+    self.ipAddr = None
     self.eth = None
+    self.wlan = None
+    self.curDev = None
 
     #parse ip address from dhcpcd.conf
     #these are expected static ip addresses
@@ -126,7 +139,7 @@ class Blinker(Thread):
           mm1 = re1.search(line)
           if mm1:
             intf = mm1.group(1)
-            self.lan[intf] = {}
+            self.lanConfig[intf] = {}
             if intf.startswith("wlan"):
               self.wlan = intf
             elif intf.startswith("eth"):
@@ -134,13 +147,16 @@ class Blinker(Thread):
           if len(line) > 7 and line[0] != '#':
             zz = re2.search(line)
             if zz:
-              self.lan[intf][zz.group(1)] = zz.group(2).split('/')
+              self.lanConfig[intf][zz.group(1)] = zz.group(2).split('/')
         else:
           mm1 = re1.search(line)
           if mm1:
             intf = mm1.group(1)
-            self.lan[intf] = {}
-
+            if intf.startswith("wlan"):
+              self.wlan = intf
+            elif intf.startswith("eth"):
+              self.eth = intf
+            self.lanConfig[intf] = {}
     #actual name server set to resolv.conf
     self.actualNameServer = None
     with open("/etc/resolv.conf", "r") as f:
@@ -154,95 +170,98 @@ class Blinker(Thread):
     self.curDev = None
     self.currentWifi = None
     self.terminate = Event()
-    self.changeStat = Event()
-    self.setStatus('OK')
-    self.checkerTimer = None
+    self.setCurrentStatus('OK')
 
-  def startTimer(self):
-    self.checkerTimer = Timer(60, self.checkerWorker, ())
-    self.checkerTimer.start()
+  def getCurrentStatusOK(self):
+    return self.currentStatus == 'OK'
+
+  def setCurrentStatus(self,st):
+    self.currentStatus = st
+    return (st == 'OK')
 
   def end(self):
-    print "Ctrl-C pressed"
+    if self.terminate.wait(0):
+      return
+    print "Ctrl-C pressed - will exit in few seconds"
+    self.activity.off()
+    with open("/sys/class/leds/led0/trigger","w") as f:
+      f.write("mmc0")
     self.terminate.set()
-    if self.checkerTimer:
-      self.checkerTimer.cancel()
-    self.runCmd("echo mmc0 >/sys/class/leds/led0/trigger");
-    print "end requested"
-
-  def checkerWorker(self):
-    print "checkerWorker"
-    if self.terminate.wait(0):
-      return
-    self.checkStatus()
-    print "CurrentStatus: %s" % self.currentStatus
-    if self.terminate.wait(0):
-      return
-    self.startTimer()
+    self.ipr.close()
+    self.ipr = None
 
   def checkStatus(self):
-    print "start checkStatus"
     #if eth is up, then use treat it as main i/f
     self.curDev = None
-    if self.lan[self.wlan]:
-      ret = self.ifconfig(self.eth) #see check i/f is up
+    self.ipAddr = None
+
+    self.setCurrentStatus(None)
+    if self.eth and self.lanConfig[self.eth]:
+      ret = self.ifconfig(self.eth) #see check eth i/f is up
       if ret:
-        self.curDev = self.eth
-        self.currentIP = ret[0]
+        if self.lanConfig[self.eth]['ip_address'][0] == ret[0]:
+          #got right ip address
+          self.ipAddr = ret[0]
+          self.curDev = self.eth
+          self.setCurrentStatus('OK')
+        else:
+          print "wrong ip address for dev %s: %s" % (self.eth,ret[0])
+          self.setCurrentStatus('X')
 
-    #if Wifi is not configured in dhcpcd.txt, then exit as status "N"
-    if not self.curDev and not self.lan[self.wlan]:
-      return self.setStatus('N') # no device is up
-
-    if not self.curDev:
+    #if eth is not up and wlan is configured
+    if self.wlan and self.lanConfig[self.wlan] and not self.ipAddr:
       #if LAN is not up, check wifi device status
       ret = self.iwconfig(self.wlan) #see if wifi is connected
+      #if both eth and wlan are down, then 'W'
       if not ret:
-        return self.setStatus('W') # wifi is configured but not connected
-      if self.currentWifi != self.expectedWifi:
-        return self.setStatus('X') # wifi is configured to unexpected ssid
-      ret = self.ifconfig(self.wlan)
-      print "WIFI = OK (%s:%s)" % (self.wlan,self.currentWifi)
-      self.curDev = self.wlan
-      self.currentIP = ret[0]
+        return self.setCurrentStatus('W') # wifi is configured but not connected
 
-    if self.terminate.wait(0):
+      self.curDev = self.wlan
+      print "WIFI = OK (%s:%s)" % (self.wlan,self.currentWifi)
+      ret = self.ifconfig(self.wlan) #see check wlan i/f is up
+      if ret:
+        self.curDev = self.wlan
+        if self.lanConfig[self.wlan]['ip_address'][0] == ret[0]:
+          self.ipAddr = ret[0]
+          self.setCurrentStatus('OK')
+        else:
+          print "wrong ip address for dev %s: %s" % (self.wlan,ret[0])
+          self.setCurrentStatus('X')
+
+    if not self.ipAddr:
+      print "both eth and wlan are down, status=%s" % self.currentStatus
+      if self.currentStatus is None:
+        self.setCurrentStatus('N')
       return
 
     #check IP conflict
-    ret = self.arp(self.currentIP) #check dup ip
-    if ret:
-      return self.setStatus('D') # dup ip
-    print "No conflict"
+    if not self.arp():
+      return
 
     if self.terminate.wait(0):
       return
 
-    gw = self.lan[self.curDev]['routers'][0]
-    dns = self.lan[self.curDev]['domain_name_servers'][0]
-    ret = self.route(self.curDev,gw)
+    self.gw = self.lanConfig[self.curDev]['routers'][0]
+    self.dns = self.lanConfig[self.curDev]['domain_name_servers'][0]
+    self.setCurrentStatus('OK')
+    ret = self.route(self.curDev)
     if not ret:
-      return self.setStatus('G') # g/w error
-
-    self.gw = ret[1]
+      return
     print "Got default route, %s" % self.gw
 
     if self.terminate.wait(0):
       return
 
-    #print self.lan[self.curDev]
+    #print self.lanConfig[self.curDev]
     #ret = self.ping(self.actualNameServer) #ping dns
     #print ret
     ret = self.ping(self.gw) #ping g/w
     if not ret:
-      return self.setStatus('P') # "G/W ping failed"
-    self.setStatus("OK")
+      print "G/W ping failed"
+      self.currentStatus = "P"
+      return
+    self.currentStatus = "OK"
     print "All OK"
-
-  def setStatus(self,stat):
-    print "status %s set" % stat
-    self.changeStat.set()
-    self.currentStatus = stat
 
   def runCmd(self, cmd, re1 = None):
     p = Popen(cmd, stdout=PIPE, stderr=PIPE, shell=True)
@@ -277,23 +296,35 @@ class Blinker(Thread):
     ret = self.runCmd(cmd,r) 
     self.currentWifi = ret.group(1) if ret else None
     print "WIFI connected: %s" % self.currentWifi
-    return ret.groups() if ret else None
+    return self.currentWifi is not None
 
-  def arp(self,dev):
-    cmd = "/usr/sbin/arp -n %s" % dev
-    r = re.compile('^([\d\.]+)\s+(\w+)\s+([\w:]+)\s+(\w+)\s+(\w+)$')
-    ret = self.runCmd(cmd,r)
-    return ret.groups() if ret else None
+  def arp(self):
+    #check IP conflict
+    for n in self.ipr.get_neighbours():
+      attrs = parseAttrs(n['attrs']) if 'attrs' in n else None
+      if attrs['NDA_LLADDR'] == '00:00:00:00:00:00':
+        continue
+      if attrs['NDA_DST'] == self.ipAddr:
+        print attrs['NDA_DST']
+        print "detect conflict with with mac addr %s" % (attrs['NDA_LLADDR'])
+        return self.setCurrentStatus('D')
+    print "ip address  %s has no conflict" % self.ipAddr
+    return True
 
-  def route(self,dev,gw):
-    cmd = "/sbin/route -n | grep %s | grep '%s '" % (dev,gw)
-    print cmd
-    r = re.compile('^([\d\.]+)\s+([\d\.]+)\s+([\d\.]+)\s+(\w+)\s+\d+\s+\d+\s+\d+\s+\w+$')
-    ret = self.runCmd(cmd,r)
-    return ret.groups() if ret else None
+  def route(self,dev):
+    for n in self.ipr.get_routes():
+      if 'family' in n and n['family'] != 2:
+        #ipv4 only
+        continue
+      attrs = parseAttrs(n['attrs']) if 'attrs' in n else None
+      if 'RTA_GATEWAY' in attrs and attrs['RTA_GATEWAY']:
+        if self.gw != attrs['RTA_GATEWAY']:
+          print "default g/w doesn't match with config: %s" % attrs['RTA_GATEWAY']
+          self.setCurrentStatus('G')
+    return self.getCurrentStatusOK()
 
   def ifconfig(self,dev):
-    cmd = "/sbin/ifconfig %s" % dev
+    cmd = "/sbin/ifconfig %s | grep inet" % dev
     r = re.compile('^inet\s+([\d\.]+)\s+netmask\s+([\d\.]+)\s+broadcast\s+([\d\.]+)$')
     ret = self.runCmd(cmd,r) 
     return ret.groups() if ret else None
@@ -305,36 +336,81 @@ class Blinker(Thread):
     return ret.groups() if ret else None
 
   def run(self):
-    print "run thread"
     self.blink()
+    print "blinker thread ended"
+
+  def changeDetector(self):
+    if not self.ipr:
+      return
+    try:
+      self.ipr.bind()
+    except:
+      print "Exception: %s" % traceback.format_exc()
+      return
+
+    while not self.terminate.wait(.1):
+      if not self.ipr:
+        return
+      try:
+        ret = select([self.ipr],[],[],5)
+        if len(ret[0]) == 0:
+          continue
+        for msg in self.ipr.get():
+          if 'family' in msg and msg['family'] != 2:
+            #ipv4 only
+            continue
+          attrs = parseAttrs(msg['attrs']) if 'attrs' in msg else None
+          event = msg['event']
+          #print 'change detected: %s' % event
+          msg.pop('event', None)
+          msg.pop('attrs', None)
+          msg.pop('header', None)
+
+          if event in ("RTM_NEWADDR", "RTM_DELADDR","RTM_GETADDR"):
+            print "%s - %s: %s, %s" % (asctime(), event, attrs, msg)
+            self.checkStatus()
+          elif event in ("RTM_NEWROUTE","RTM_DELROUTE","RTM_GETROUTE"):
+            print "%s - %s: %s, %s" % (asctime(), event, attrs, msg)
+            self.checkStatus()
+          elif event in ("RTM_NEWNEIGH"):
+            attrs.pop('NDA_CACHEINFO', None)
+            if attrs['NDA_LLADDR'] == '00:00:00:00:00:00':
+              continue
+            if attrs['NDA_DST'] == self.ipAddr:
+              print "detect conflict with with mac addr %s" % (attrs['NDA_LLADDR'])
+              self.setCurrentStatus('D')
+            else:
+              print "%s - %s: %s, %s" % (asctime(), event, attrs, msg)
+      except:
+        print "Exception: %s" % traceback.format_exc()
+        pass
 
   def blink(self,pchr=None):
-    if pchr:
-      self.currentStatus = pchr
-    while not self.terminate.wait(0):
-      self.changeStat.clear()
-      if self.currentStatus == 'OK':
-        while not self.terminate.wait(7.8):
+    if not pchr:
+      chr = self.currentStatus
+    else:
+      chr = pchr
+
+    if chr == 'OK':
+      while not self.terminate.wait(3.8):
+        if self.terminate.wait(4):
+          return True
+        self.activity.on()
+        sleep(.2)
+        self.activity.off()
+    else:
+      while not self.terminate.wait(3):
+        for c in self.ch[chr]:
           self.activity.on()
-          sleep(.2)
+          sleep(.2 if c=='.' else .6)
           self.activity.off()
-          if self.changeStat.wait(0):
-            break
-      else:
-        print "show status %s" % self.currentStatus
-        while not self.terminate.wait(3):
-          for c in self.ch[self.currentStatus]:
-            self.activity.on()
-            sleep(.2 if c=='.' else .6)
-            self.activity.off()
-            sleep(.2)
-          if self.changeStat.wait(0):
-            break
+          sleep(.2)
+    return True
 
 if __name__ == "__main__":
   l = Blinker()
   def signal_handler(signum,frame):
-    print "Ctrl-C: %d" % signum
+    print signum
     l.end()
   signal(SIGINT, signal_handler)
   if len(sys.argv) == 2:
@@ -345,11 +421,13 @@ if __name__ == "__main__":
       print "parameter error, %s" % sys.argv[1]
   else:
     l.checkStatus()
+    print "%s - started" % asctime()
     l.start()
-    l.startTimer()
-    print "wait for signal - must be a loop"
-    while not l.terminate.wait(2):
+    l.changeDetector()
+
+    while not l.terminate.wait(5):
       pass
+    print "%s - wait for end" % asctime()
     l.join()
-    print "end of process"
+    print "%s - process end" % asctime()
 
