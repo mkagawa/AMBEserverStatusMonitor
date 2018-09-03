@@ -307,7 +307,7 @@ class Blinker(Thread):
     #check IP conflict
     for n in self.ipr.get_neighbours():
       attrs = parseAttrs(n['attrs']) if 'attrs' in n else None
-      if attrs['NDA_LLADDR'] == '00:00:00:00:00:00':
+      if 'NDA_LLADDR' in attrs and attrs['NDA_LLADDR'] == '00:00:00:00:00:00':
         continue
       if attrs['NDA_DST'] == self.ipAddr:
         print attrs['NDA_DST']
@@ -317,15 +317,19 @@ class Blinker(Thread):
     return True
 
   def route(self,dev):
+    gwmatch = False
     for n in self.ipr.get_routes():
       if 'family' in n and n['family'] != 2:
         #ipv4 only
         continue
       attrs = parseAttrs(n['attrs']) if 'attrs' in n else None
-      if 'RTA_GATEWAY' in attrs and attrs['RTA_GATEWAY']:
-        if self.gw != attrs['RTA_GATEWAY']:
-          print "default g/w doesn't match with config: %s" % attrs['RTA_GATEWAY']
-          self.setCurrentStatus('G')
+      print attrs
+      if 'RTA_GATEWAY' in attrs and attrs['RTA_GATEWAY'] and self.gw == attrs['RTA_GATEWAY']:
+        gwmatch = True
+
+    if not gwmatch:
+      print "default g/w doesn't match with config: %s" % attrs['RTA_GATEWAY']
+      self.setCurrentStatus('G')
     return self.getCurrentStatusOK()
 
   def ifconfig(self,dev):
