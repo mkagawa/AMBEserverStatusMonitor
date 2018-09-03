@@ -309,11 +309,12 @@ class Blinker(Thread):
     #check IP conflict
     for n in self.ipr.get_neighbours():
       attrs = parseAttrs(n['attrs']) if 'attrs' in n else None
-      if 'NDA_LLADDR' in attrs and attrs['NDA_LLADDR'] == '00:00:00:00:00:00':
+      NDA_LLADDR = attrs['NDA_LLADDR'] if 'NDA_LLADDR' in attrs else None
+      NDA_DST = attrs['NDA_DST'] if 'NDA_DST' in attrs else None
+      if NDA_LLADDR == '00:00:00:00:00:00':
         continue
-      if attrs['NDA_DST'] == self.ipAddr:
-        #print attrs['NDA_DST']
-        print "detect conflict with with mac addr %s" % (attrs['NDA_LLADDR'])
+      if NDA_DST == self.ipAddr:
+        print "detect conflict with with mac addr %s" % (NDA_LLADDR)
         return self.setCurrentStatus('D')
     print "ip address  %s has no conflict" % self.ipAddr
     return True
@@ -401,10 +402,12 @@ class Blinker(Thread):
             checkerInvoker()
           elif event in ("RTM_NEWNEIGH"):
             attrs.pop('NDA_CACHEINFO', None)
-            if attrs['NDA_LLADDR'] == '00:00:00:00:00:00':
+            NDA_LLADDR = attrs['NDA_LLADDR'] if 'NDA_LLADDR' in attrs else None
+            NDA_DST = attrs['NDA_DST'] if 'NDA_DST' in attrs else None
+            if NDA_LLADDR == '00:00:00:00:00:00':
               continue
-            if attrs['NDA_DST'] == self.ipAddr:
-              print "detect conflict with with mac addr %s" % (attrs['NDA_LLADDR'])
+            if NDA_DST == self.ipAddr:
+              print "detect conflict with with mac addr %s" % (NDA_LLADDR)
               self.setCurrentStatus('D')
       except:
         print "Exception: %s" % traceback.format_exc()
