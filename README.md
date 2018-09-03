@@ -1,9 +1,14 @@
 # AMBEserverStatusMonitor
 
-## motivation
+## Motivation
 this project is for AMBE portable server, a headless device, to display current network status by using RP-Zero built-in LED.
 
-## copyright
+## Description
+this program is running as systemd service. take control of LED, and blinks to by pattern.
+
+
+## License
+
 The MIT License (MIT)
 
 Copyright (c) 2018 Masa Kagawa (NW6UP) mkagawa@hotmail.com
