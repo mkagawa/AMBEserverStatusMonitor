@@ -278,11 +278,16 @@ class Blinker(Thread):
     if not re1:
       return out
 
-    for line in out.split("\n"):
-      rr1 = re1.search(line.strip())
-      if rr1:
-        return rr1
-      #print ">> " + line
+    if type(re1).__name__ == 'SRE_Pattern':
+      re1 = [re1]
+
+    for rrr in re1:
+      for line in out.split("\n"):
+        rr1 = rrr.search(line.strip())
+        print line
+        if rr1:
+          return rr1
+        #print ">> " + line
 
     #print re1.pattern
     #print "failed 2 " + cmd
