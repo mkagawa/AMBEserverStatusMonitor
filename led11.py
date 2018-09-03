@@ -204,6 +204,7 @@ class Blinker(Thread):
       if ret:
         if self.lanConfig[self.eth]['ip_address'][0] == ret[0]:
           #got right ip address
+          print "Got LAN ip address: %s" % ret[0]
           self.ipAddr = ret[0]
           self.curDev = self.eth
           self.setCurrentStatus('OK')
@@ -224,6 +225,7 @@ class Blinker(Thread):
       if ret:
         self.curDev = self.wlan
         if self.lanConfig[self.wlan]['ip_address'][0] == ret[0]:
+          print "Got WIFI ip address: %s" % ret[0]
           self.ipAddr = ret[0]
           self.setCurrentStatus('OK')
         else:
