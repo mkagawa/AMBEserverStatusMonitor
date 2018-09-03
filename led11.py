@@ -177,6 +177,7 @@ class Blinker(Thread):
 
   def setCurrentStatus(self,st):
     self.currentStatus = st
+    print "%s - status %s set" % (asctime(), st)
     return (st == 'OK')
 
   def end(self):
@@ -195,7 +196,7 @@ class Blinker(Thread):
     self.curDev = None
     self.ipAddr = None
 
-    self.setCurrentStatus(None)
+    self.setCurrentStatus('OK')
     if self.eth and self.lanConfig[self.eth]:
       ret = self.ifconfig(self.eth) #see check eth i/f is up
       if ret:
@@ -212,9 +213,8 @@ class Blinker(Thread):
     if self.wlan and self.lanConfig[self.wlan] and not self.ipAddr:
       #if LAN is not up, check wifi device status
       ret = self.iwconfig(self.wlan) #see if wifi is connected
-      #if both eth and wlan are down, then 'W'
       if not ret:
-        return self.setCurrentStatus('W') # wifi is configured but not connected
+        return
 
       self.curDev = self.wlan
       print "WIFI = OK (%s:%s)" % (self.wlan,self.currentWifi)
@@ -296,7 +296,9 @@ class Blinker(Thread):
     ret = self.runCmd(cmd,r) 
     self.currentWifi = ret.group(1) if ret else None
     print "WIFI connected: %s" % self.currentWifi
-    return self.currentWifi is not None
+    if self.currentWifi is not None:
+      return True
+    return self.setCurrentStatus('W') # wifi is configured but not connected
 
   def arp(self):
     #check IP conflict
@@ -348,6 +350,17 @@ class Blinker(Thread):
       print "Exception: %s" % traceback.format_exc()
       return
 
+    self.checkerTimer = None
+    def checker():
+      print "%s - checker invoked" % asctime()
+      self.checkerTimer = None
+      self.checkStatus() 
+    def checkerInvoker():
+      if not self.checkerTimer:
+        print "%s - network state changed" % asctime()
+        self.checkerTimer = Timer(8, checker)
+        self.checkerTimer.start()
+
     while not self.terminate.wait(.1):
       if not self.ipr:
         return
@@ -367,11 +380,11 @@ class Blinker(Thread):
           msg.pop('header', None)
 
           if event in ("RTM_NEWADDR", "RTM_DELADDR","RTM_GETADDR"):
-            print "%s - %s: %s, %s" % (asctime(), event, attrs, msg)
-            self.checkStatus()
+            print "%s - %s" % event
+            checkerInvoker()
           elif event in ("RTM_NEWROUTE","RTM_DELROUTE","RTM_GETROUTE"):
-            print "%s - %s: %s, %s" % (asctime(), event, attrs, msg)
-            self.checkStatus()
+            print "%s - %s" % event
+            checkerInvoker()
           elif event in ("RTM_NEWNEIGH"):
             attrs.pop('NDA_CACHEINFO', None)
             if attrs['NDA_LLADDR'] == '00:00:00:00:00:00':
@@ -379,27 +392,20 @@ class Blinker(Thread):
             if attrs['NDA_DST'] == self.ipAddr:
               print "detect conflict with with mac addr %s" % (attrs['NDA_LLADDR'])
               self.setCurrentStatus('D')
-            else:
-              print "%s - %s: %s, %s" % (asctime(), event, attrs, msg)
       except:
         print "Exception: %s" % traceback.format_exc()
         pass
 
   def blink(self,pchr=None):
-    if not pchr:
-      chr = self.currentStatus
-    else:
-      chr = pchr
-
-    if chr == 'OK':
-      while not self.terminate.wait(3.8):
-        if self.terminate.wait(4):
+    while not self.terminate.wait(3):
+      chr = self.currentStatus if not pchr else pchr
+      if chr == 'OK':
+        if self.terminate.wait(4.8):
           return True
         self.activity.on()
         sleep(.2)
         self.activity.off()
-    else:
-      while not self.terminate.wait(3):
+      else:
         for c in self.ch[chr]:
           self.activity.on()
           sleep(.2 if c=='.' else .6)
