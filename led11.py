@@ -99,7 +99,7 @@ class Blinker(Thread):
       warnings.simplefilter("ignore")
       self.activity = LED(47, active_high=False)
       self.activity.off()
-
+    self.currentStatus = None
     self.lanConfig = {}
     self.ipr = IPRoute()
     self.ipAddr = None
@@ -170,7 +170,6 @@ class Blinker(Thread):
         if r:
           self.actualNameserver = r.group(1)
     self.curDev = None
-    self.currentWifi = None
     self.terminate = Event()
     self.setCurrentStatus('OK')
 
@@ -178,8 +177,10 @@ class Blinker(Thread):
     return self.currentStatus == 'OK'
 
   def setCurrentStatus(self,st):
-    self.currentStatus = st
-    print "%s - status %s set" % (asctime(), st)
+    if self.currentStatus != st:
+      if self.currentStatus != None:
+        print "%s - status %s set" % (asctime(), st)
+      self.currentStatus = st
     return (st == 'OK')
 
   def end(self):
@@ -220,7 +221,7 @@ class Blinker(Thread):
         return
 
       self.curDev = self.wlan
-      print "WIFI = OK (%s:%s)" % (self.wlan,self.currentWifi)
+      #print "WIFI = OK (%s:%s)" % (self.wlan,self.currentWifi)
       ret = self.ifconfig(self.wlan) #see check wlan i/f is up
       if ret:
         self.curDev = self.wlan
@@ -260,10 +261,10 @@ class Blinker(Thread):
     ret = self.ping(self.gw) #ping g/w
     if not ret:
       print "G/W ping failed"
-      self.currentStatus = "P"
+      self.setCurrentStatus('P')
       return
-    self.currentStatus = "OK"
-    print "All OK"
+    self.setCurrentStatus('OK')
+    #print "All OK"
 
   def runCmd(self, cmd, re1 = None):
     p = Popen(cmd, stdout=PIPE, stderr=PIPE, shell=True)
@@ -341,7 +342,7 @@ class Blinker(Thread):
     for dd in self.ipr.get_links(): #filter may not work always
       attrs = parseAttrs(dd['attrs']) if 'attrs' in dd else None
       if attrs and attrs['IFLA_IFNAME'] == dev:
-        print "dev:%s,index: %s" % (dev,dd['index'])
+        #print "dev:%s,index: %s" % (dev,dd['index'])
         aa = self.ipr.get_addr(index=dd['index'])
         if aa:
           attrs = parseAttrs(aa[0]['attrs']) if 'attrs' in aa[0] else None
@@ -397,10 +398,10 @@ class Blinker(Thread):
           msg.pop('header', None)
 
           if event in ("RTM_NEWADDR", "RTM_DELADDR","RTM_GETADDR"):
-            print "%s - %s" % (asctime(),event)
+            #print "%s - %s" % (asctime(),event)
             checkerInvoker()
           elif event in ("RTM_NEWROUTE","RTM_DELROUTE","RTM_GETROUTE"):
-            print "%s - %s" % (asctime(),event)
+            #print "%s - %s" % (asctime(),event)
             checkerInvoker()
           elif event in ("RTM_NEWNEIGH"):
             attrs.pop('NDA_CACHEINFO', None)
@@ -446,7 +447,7 @@ if __name__ == "__main__":
       print "parameter error, %s" % sys.argv[1]
   else:
     l.checkStatus()
-    print "%s - started" % asctime()
+    print "%s - monitor started" % asctime()
     l.start()
     l.changeDetector()
 
