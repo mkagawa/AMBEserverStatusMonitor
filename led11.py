@@ -33,7 +33,7 @@ __maintainer__ = "Masa Kagawa"
 __email__ = "mkagawa@hotmail.com"
 __status__ = "Beta"
 
-
+from argparse import Namespace
 from pyroute2 import IPRoute
 from gpiozero import LED
 from time import sleep
@@ -49,8 +49,15 @@ import traceback
 
 LEDDEV="/sys/class/leds/led0/trigger"
 
-def parseAttrs(attrs):
-  return dict((x, y) for x, y in attrs)
+class Attrs(Namespace):
+   def __init__(self,attrs):
+     a = dict((x, y) for x, y in attrs)
+     Namespace.__init__(self,**a)
+   def __getattr__(self,name):
+     try:
+       return getattr(self,name)
+     except:
+       return None
 
 class Blinker(Thread):
   def __init__(self):
@@ -311,10 +318,8 @@ class Blinker(Thread):
   def arp(self):
     #check IP conflict
     for n in self.ipr.get_neighbours():
-      attrs = parseAttrs(n['attrs']) if 'attrs' in n else None
-      NDA_LLADDR = attrs['NDA_LLADDR'] if 'NDA_LLADDR' in attrs else None
-      NDA_DST = attrs['NDA_DST'] if 'NDA_DST' in attrs else None
-      if NDA_LLADDR == '00:00:00:00:00:00':
+      attrs = Attrs(**n['attrs']) if 'attrs' in n else None
+      if attrs.NDA_LLADDR == '00:00:00:00:00:00':
         continue
       if NDA_DST == self.ipAddr:
         print "detect conflict with with mac addr %s" % (NDA_LLADDR)
@@ -328,25 +333,25 @@ class Blinker(Thread):
       if 'family' in n and n['family'] != 2:
         #ipv4 only
         continue
-      attrs = parseAttrs(n['attrs']) if 'attrs' in n else None
+      attrs = Attrs(**n['attrs']) if 'attrs' in n else None
       #print attrs
-      if 'RTA_GATEWAY' in attrs and attrs['RTA_GATEWAY'] and self.gw == attrs['RTA_GATEWAY']:
+      if attrs.RTA_GATEWAY == self.gw:
         gwmatch = True
 
     if not gwmatch:
-      print "default g/w doesn't match with config: %s" % attrs['RTA_GATEWAY']
+      print "default g/w doesn't match with config: %s" % attrs.RTA_GATEWAY
       self.setCurrentStatus('G')
     return self.getCurrentStatusOK()
 
   def ifconfig(self,dev):
     for dd in self.ipr.get_links(): #filter may not work always
-      attrs = parseAttrs(dd['attrs']) if 'attrs' in dd else None
-      if attrs and attrs['IFLA_IFNAME'] == dev:
+      attrs = Attrs(**dd['attrs']) if 'attrs' in dd else None
+      if attrs.IFLA_IFNAME == dev:
         #print "dev:%s,index: %s" % (dev,dd['index'])
         aa = self.ipr.get_addr(index=dd['index'])
         if aa:
-          attrs = parseAttrs(aa[0]['attrs']) if 'attrs' in aa[0] else None
-          return (attrs['IFA_ADDRESS'],attrs['IFA_BROADCAST']) if attrs else None
+          attrs = Attrs(**aa[0]['attrs']) if 'attrs' in aa[0] else None
+          return (attrs.IFA_ADDRESS,attrs.IFA_BROADCAST) if attrs else None
     return None
 
   def ping(self, ipaddr=None):
@@ -390,8 +395,8 @@ class Blinker(Thread):
           if 'family' in msg and msg['family'] != 2:
             #ipv4 only
             continue
-          attrs = parseAttrs(msg['attrs']) if 'attrs' in msg else None
-          event = msg['event']
+          attrs = Attrs(**msg['attrs']) if 'attrs' in msg else None
+          event = msg.event
           #print 'change detected: %s' % event
           msg.pop('event', None)
           msg.pop('attrs', None)
@@ -405,11 +410,9 @@ class Blinker(Thread):
             checkerInvoker()
           elif event in ("RTM_NEWNEIGH"):
             attrs.pop('NDA_CACHEINFO', None)
-            NDA_LLADDR = attrs['NDA_LLADDR'] if 'NDA_LLADDR' in attrs else None
-            NDA_DST = attrs['NDA_DST'] if 'NDA_DST' in attrs else None
-            if NDA_LLADDR == '00:00:00:00:00:00':
+            if attrs.NDA_LLADDR == '00:00:00:00:00:00':
               continue
-            if NDA_DST == self.ipAddr:
+            if attrs.NDA_DST == self.ipAddr:
               print "detect conflict with with mac addr %s" % (NDA_LLADDR)
               self.setCurrentStatus('D')
       except:
