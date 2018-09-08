@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
-#Version 0.5
 
 # The MIT License (MIT)
 #
@@ -28,7 +27,7 @@
 __author__ = "Masa Kagawa (NW6UP)"
 __copyright__ = "Copyright 2018, Masa Kagawa"
 __license__ = "MIT"
-__version__ = "0.5"
+__version__ = "0.9"
 __maintainer__ = "Masa Kagawa"
 __email__ = "mkagawa@hotmail.com"
 __status__ = "Beta"
