@@ -2,4 +2,4 @@
 cd /boot
 echo $BASHPID > /run/ambedstatus.pid
 export LANG=C
-exec /boot/led11.py >/boot/monitor.txt
+exec stdbuf -e0 -o0 /boot/led11.py >/boot/monitor.txt
