@@ -9,14 +9,12 @@ this program is running as systemd service. take control of LED, and blinks to b
 ## Meaning of LED
 LED flashes every 6 seconds if status is normal. Otherwise flashes short cycle with combination of long and short flashes, which is based on single letter of morse code.
 
-|-----------|-----|--------------------------------------------------------|
 |LED flashes|Morse|Meaning                                                 |
 |-----------|-----|--------------------------------------------------------|
 |L,S,S,L    | X   |Could not use configured IP address (wrong or duplicate)|
 |S,L,L      | W   |Wifi configuration problem                              |
 |S,L,L,S    | P   |G/W IP doesn't respond to PING                          |
 |L,L,S      | G   |G/W not in route. configuration error                   |
-|-----------|-----|--------------------------------------------------------|
 
 ## License
 
