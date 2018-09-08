@@ -50,12 +50,13 @@ import traceback
 LEDDEV="/sys/class/leds/led0/trigger"
 
 class Attrs(Namespace):
-   def __init__(self,attrs):
-     Namespace.__init__(self,**dict((x, y) for x, y in attrs))
+   def __init__(self,**attrs):
+     if attrs:
+       Namespace.__init__(self,**dict((x, y) for x, y in attrs))
    def __getattr__(self,name):
      try:
        return getattr(self,name)
-     except:
+     except: #no key found
        return None
 
 class Blinker(Thread):
