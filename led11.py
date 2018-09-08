@@ -58,7 +58,7 @@ class Attrs(Namespace):
    def __getattr__(self,name):
      try:
        return getattr(self,name)
-     except: #no key found
+     except: #no key found is not an error
        return None
 
 class Blinker(Thread):
@@ -398,7 +398,7 @@ class Blinker(Thread):
             #ipv4 only
             continue
           attrs = Attrs(msg['attrs'] if 'attrs' in msg else None)
-          event = msg.event
+          event = msg['event']
           #print 'change detected: %s' % event
           msg.pop('event', None)
           msg.pop('attrs', None)
