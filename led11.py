@@ -49,10 +49,13 @@ import traceback
 
 LEDDEV="/sys/class/leds/led0/trigger"
 
+''' class to receive dict to convert class attributes '''
 class Attrs(Namespace):
-   def __init__(self,**attrs):
+   def __init__(self,attrs):
      if attrs:
-       Namespace.__init__(self,**dict((x, y) for x, y in attrs))
+       for x, y in attrs:
+         if not "CACHEINFO" in x:
+           self.__dict__[x] = y
    def __getattr__(self,name):
      try:
        return getattr(self,name)
@@ -318,10 +321,10 @@ class Blinker(Thread):
   def arp(self):
     #check IP conflict
     for n in self.ipr.get_neighbours():
-      attrs = Attrs(**n['attrs']) if 'attrs' in n else None
+      attrs = Attrs(n['attrs'] if 'attrs' in n else None)
       if attrs and attrs.NDA_LLADDR == '00:00:00:00:00:00':
         continue
-      if NDA_DST == self.ipAddr:
+      if attrs.NDA_DST == self.ipAddr:
         print "detect conflict with with mac addr %s" % (NDA_LLADDR)
         return self.setCurrentStatus('D')
     print "ip address  %s has no conflict" % self.ipAddr
@@ -333,7 +336,7 @@ class Blinker(Thread):
       if 'family' in n and n['family'] != 2:
         #ipv4 only
         continue
-      attrs = Attrs(**n['attrs']) if 'attrs' in n else None
+      attrs = Attrs(n['attrs'] if 'attrs' in n else None)
       #print attrs
       if attrs and attrs.RTA_GATEWAY == self.gw:
         gwmatch = True
@@ -345,12 +348,12 @@ class Blinker(Thread):
 
   def ifconfig(self,dev):
     for dd in self.ipr.get_links(): #filter may not work always
-      attrs = Attrs(**dd['attrs']) if 'attrs' in dd else None
+      attrs = Attrs(dd['attrs'] if 'attrs' in dd else None)
       if attrs and attrs.IFLA_IFNAME == dev:
         #print "dev:%s,index: %s" % (dev,dd['index'])
         aa = self.ipr.get_addr(index=dd['index'])
         if aa:
-          attrs = Attrs(**aa[0]['attrs']) if 'attrs' in aa[0] else None
+          attrs = Attrs(aa[0]['attrs'] if 'attrs' in aa[0] else None)
           return (attrs.IFA_ADDRESS,attrs.IFA_BROADCAST) if attrs else None
     return None
 
@@ -395,7 +398,7 @@ class Blinker(Thread):
           if 'family' in msg and msg['family'] != 2:
             #ipv4 only
             continue
-          attrs = Attrs(**msg['attrs']) if 'attrs' in msg else None
+          attrs = Attrs(msg['attrs'] if 'attrs' in msg else None)
           event = msg.event
           #print 'change detected: %s' % event
           msg.pop('event', None)
