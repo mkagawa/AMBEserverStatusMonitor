@@ -6,7 +6,7 @@ this project is for AMBE portable server, a headless device, to display current 
 ## Description
 this program is running as systemd service. take control of LED, and blinks to by pattern.
 
-## Meaning of LED
+## Meaning of LED flash patterns
 LED flashes every 6 seconds if status is normal. Otherwise flashes short cycle with combination of long and short flashes, 
 which is based on morse code letter.
 
