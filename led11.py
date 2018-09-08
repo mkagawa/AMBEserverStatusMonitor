@@ -51,8 +51,7 @@ LEDDEV="/sys/class/leds/led0/trigger"
 
 class Attrs(Namespace):
    def __init__(self,attrs):
-     a = dict((x, y) for x, y in attrs)
-     Namespace.__init__(self,**a)
+     Namespace.__init__(self,**dict((x, y) for x, y in attrs))
    def __getattr__(self,name):
      try:
        return getattr(self,name)
@@ -319,7 +318,7 @@ class Blinker(Thread):
     #check IP conflict
     for n in self.ipr.get_neighbours():
       attrs = Attrs(**n['attrs']) if 'attrs' in n else None
-      if attrs.NDA_LLADDR == '00:00:00:00:00:00':
+      if attrs and attrs.NDA_LLADDR == '00:00:00:00:00:00':
         continue
       if NDA_DST == self.ipAddr:
         print "detect conflict with with mac addr %s" % (NDA_LLADDR)
@@ -335,7 +334,7 @@ class Blinker(Thread):
         continue
       attrs = Attrs(**n['attrs']) if 'attrs' in n else None
       #print attrs
-      if attrs.RTA_GATEWAY == self.gw:
+      if attrs and attrs.RTA_GATEWAY == self.gw:
         gwmatch = True
 
     if not gwmatch:
@@ -346,7 +345,7 @@ class Blinker(Thread):
   def ifconfig(self,dev):
     for dd in self.ipr.get_links(): #filter may not work always
       attrs = Attrs(**dd['attrs']) if 'attrs' in dd else None
-      if attrs.IFLA_IFNAME == dev:
+      if attrs and attrs.IFLA_IFNAME == dev:
         #print "dev:%s,index: %s" % (dev,dd['index'])
         aa = self.ipr.get_addr(index=dd['index'])
         if aa:
@@ -409,7 +408,6 @@ class Blinker(Thread):
             #print "%s - %s" % (asctime(),event)
             checkerInvoker()
           elif event in ("RTM_NEWNEIGH"):
-            attrs.pop('NDA_CACHEINFO', None)
             if attrs.NDA_LLADDR == '00:00:00:00:00:00':
               continue
             if attrs.NDA_DST == self.ipAddr:
@@ -423,7 +421,7 @@ class Blinker(Thread):
     while not self.terminate.wait(3):
       chr = self.currentStatus if not pchr else pchr
       if chr == 'OK':
-        if self.terminate.wait(4.8):
+        if self.terminate.wait(2.8):
           return True
         self.activity.on()
         sleep(.2)
