@@ -36,7 +36,7 @@ from argparse import Namespace
 from pyroute2 import IPRoute
 from gpiozero import LED
 from time import sleep
-from select import select
+from select import select,error as selerr
 from threading import Timer, Thread, Event
 from signal import signal,SIGINT,SIGHUP,SIGTERM
 from subprocess import Popen,PIPE
@@ -364,7 +364,7 @@ class Blinker(Thread):
 
   def run(self):
     self.blink()
-    print "blinker thread ended"
+    #print "blinker thread ended"
 
   def changeDetector(self):
     if not self.ipr:
@@ -416,9 +416,12 @@ class Blinker(Thread):
             if attrs.NDA_DST == self.ipAddr:
               print "detect conflict with with mac addr %s" % (NDA_LLADDR)
               self.setCurrentStatus('D')
+      except selerr,e:
+        if e[0] != 4:
+          print "Exception: %s" % e
+        break
       except:
-        print "Exception: %s" % traceback.format_exc()
-        pass
+        print "Exception: %s" % (traceback.format_exc())
 
   def blink(self,pchr=None):
     while not self.terminate.wait(3):
@@ -457,7 +460,6 @@ if __name__ == "__main__":
 
     while not l.terminate.wait(5):
       pass
-    print "%s - wait for end" % asctime()
     l.join()
     print "%s - process end" % asctime()
 
